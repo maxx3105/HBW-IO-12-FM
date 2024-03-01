@@ -3715,7 +3715,7 @@
     (property "Value" "SK14" (id 1) (at 139.446 172.212 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Footprint" "Diode_SMD:D_SMA_Handsoldering" (id 2) (at 136.017 170.688 0)
+    (property "Footprint" "Diode_SMD:D_MELF" (id 2) (at 136.017 170.688 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "http://www.diodes.com/_files/datasheets/ds23022.pdf" (id 3) (at 140.462 170.688 0)
@@ -3864,7 +3864,7 @@
     (property "Value" "270µH" (id 1) (at 135.128 176.784 90)
       (effects (font (size 1.27 1.27)) (justify right))
     )
-    (property "Footprint" "Inductor_SMD:L_Bourns_SRN6045TA" (id 2) (at 133.858 170.688 0)
+    (property "Footprint" "Inductor_SMD:L_Taiyo-Yuden_MD-4040" (id 2) (at 133.858 170.688 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (id 3) (at 133.858 170.688 0)
@@ -4285,7 +4285,7 @@
       (reference "D2") (unit 1) (value "SM4007") (footprint "Diode_SMD:D_MELF")
     )
     (path "/a83c71b2-c557-4318-8baf-b665aa48616f"
-      (reference "D3") (unit 1) (value "SK14") (footprint "Diode_SMD:D_SMA_Handsoldering")
+      (reference "D3") (unit 1) (value "SK14") (footprint "Diode_SMD:D_MELF")
     )
     (path "/7eeefaeb-2380-44de-a045-b8d6373a8872"
       (reference "IC1") (unit 1) (value "ATmega32A-A") (footprint "Package_QFP:TQFP-44_10x10mm_P0.8mm")
@@ -4312,7 +4312,7 @@
       (reference "J4") (unit 1) (value "BUS_Terminal") (footprint "1891085:PHOENIX_1891085")
     )
     (path "/bc0bae93-6b92-4c09-b2b0-40b90b780a49"
-      (reference "L1") (unit 1) (value "270µH") (footprint "Inductor_SMD:L_Bourns_SRN6045TA")
+      (reference "L1") (unit 1) (value "270µH") (footprint "Inductor_SMD:L_Taiyo-Yuden_MD-4040")
     )
     (path "/2664d110-8418-4b55-9263-cbd1700b6a20"
       (reference "Q1") (unit 1) (value "16Mhz") (footprint "Crystal:Resonator_SMD_Murata_CSTxExxV-3Pin_3.0x1.1mm_HandSoldering")
