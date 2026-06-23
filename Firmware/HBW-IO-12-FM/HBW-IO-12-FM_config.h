@@ -48,11 +48,11 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
   #define IO11   6
   #define IO12   5
 
-  #define LED   31
+  #define LED   LED_BUILTIN     // D13
 
   #ifdef USE_HARDWARE_SERIAL
     #define RS485_TXEN  2
-    #define BUTTON      30
+    #define BUTTON      A6
     #define HBW_RS485       (Serial)
     #define HBW_DEBUGSTREAM (NULL)
     #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
@@ -74,36 +74,42 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
 // ============================================================================
 #elif defined(__AVR_ATmega32__) || defined(__AVR_ATmega32A__)
 
-  // Der 32A hat nur EINEN Hardware-UART und KEINE Pin-Change-Interrupts
-  // (HBWSoftwareSerial = INT_ONLY; RX braeuchte INT0/1/2). SoftwareSerial-RS485
-  // funktioniert hier nicht zuverlaessig -> RS485 MUSS auf den Hardware-UART.
-  // Folge: kein Geraete-Debug-Serial (der UART IST der Bus) -> mitlesen ueber
-  // das Gateway-BUS-RX-Log bzw. den CCU-Posteingang.
-
-  // -- TMSTAMP onboard (fix) --
-  #define LED          31       // PA7  (onboard LED)
-  #define BUTTON       30       // PA6  (onboard Config-Taster)
-
-  // -- RS485 auf Hardware-UART:  RO -> Pin 8 (PD0/RX0),  DI -> Pin 9 (PD1/TX0) --
-  #define RS485_TXEN   2        // PB2  -> Transceiver DE (+ /RE zusammen)
-  #define HBW_RS485       (Serial)
-  #define HBW_DEBUGSTREAM (NULL)
-  #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
-
-  // 12 IOs (Arduino/MightyCore-Pin-Nummern) -- bewusst weg von UART(8/9),
-  // TXEN(2), LED/Taster(30/31), JTAG(18-21) und SPI(4-7):
+  // 12 IOs: PA0..PA7 (24..31) + PC0..PC3 (16..19)
   #define IO1   24    // PA0
   #define IO2   25    // PA1
   #define IO3   26    // PA2
   #define IO4   27    // PA3
   #define IO5   28    // PA4
   #define IO6   29    // PA5
-  #define IO7   10    // PD2
-  #define IO8   11    // PD3
-  #define IO9   12    // PD4
-  #define IO10  13    // PD5
-  #define IO11  16    // PC0
-  #define IO12  17    // PC1
+  #define IO7   30    // PA6
+  #define IO8   31    // PA7
+  #define IO9   16    // PC0
+  #define IO10  17    // PC1
+  #define IO11  18    // PC2
+  #define IO12  19    // PC3
+
+  #define LED   LED_BUILTIN     // PB7 = pin 7
+
+  #ifdef USE_HARDWARE_SERIAL
+    // RS485 auf Hardware-UART (PD0/PD1), kein Debug.
+    #define RS485_TXEN  2       // PB2
+    #define BUTTON      3       // PB3
+    #define HBW_RS485       (Serial)
+    #define HBW_DEBUGSTREAM (NULL)
+    #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
+  #else
+    // RS485 per SoftwareSerial, Hardware-UART für Debug.
+    #define RS485_RXD   12      // PD4
+    #define RS485_TXD   13      // PD5
+    #define RS485_TXEN  14      // PD6
+    #define BUTTON      15      // PD7
+
+    #include <HBWSoftwareSerial.h>
+    HBWSoftwareSerial rs485(RS485_RXD, RS485_TXD);
+    #define HBW_RS485       (rs485)
+    #define HBW_DEBUGSTREAM (&Serial)
+    #define HBW_BEGIN_SERIALS() do { Serial.begin(115200); rs485.begin(19200); } while (0)
+  #endif
 
 // ============================================================================
 // ATmega644P(A) / ATmega1284P  (MightyCore -- zwei UARTs)
@@ -111,25 +117,22 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
 #elif defined(__AVR_ATmega644P__)  || defined(__AVR_ATmega644PA__) \
    || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega1284__)
 
-  // TMSTAMP-1284: LED=PA7 und Config-Taster=PA6 sind ONBOARD belegt,
-  // daher duerfen die 12 IOs PA6/PA7 NICHT nutzen -> IO7/IO8 auf PC4/PC5 verlegt.
-  // !! Pin<->Kanal-Zuordnung gegen den TMSTAMP-Carrier-Schaltplan pruefen !!
-  // 12 IOs: PA0..PA5 (24..29) + PC0..PC5 (16..21)
+  // 12 IOs: PA0..PA7 (24..31) + PC0..PC3 (16..19)
   #define IO1   24    // PA0
   #define IO2   25    // PA1
   #define IO3   26    // PA2
   #define IO4   27    // PA3
   #define IO5   28    // PA4
   #define IO6   29    // PA5
-  #define IO7   20    // PC4   (war PA6, jetzt Config-Taster)
-  #define IO8   21    // PC5   (war PA7, jetzt LED)
+  #define IO7   30    // PA6
+  #define IO8   31    // PA7
   #define IO9   16    // PC0
   #define IO10  17    // PC1
   #define IO11  18    // PC2
   #define IO12  19    // PC3
 
-  #define LED   31              // PA7  (TMSTAMP onboard LED)
-  #define BUTTON       30       // PA6  (TMSTAMP onboard Config-Taster)
+  #define LED   LED_BUILTIN     // PB7 = pin 7
+  #define BUTTON       3        // PB3
 
   // RS485 fest auf zweitem UART (Serial1: PD2=RX1, PD3=TX1), Debug auf Serial.
   #define RS485_TXEN   2        // PB2
