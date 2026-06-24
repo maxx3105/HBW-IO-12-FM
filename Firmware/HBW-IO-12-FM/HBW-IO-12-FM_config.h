@@ -75,41 +75,27 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
 #elif defined(__AVR_ATmega32__) || defined(__AVR_ATmega32A__)
 
   // 12 IOs: PA0..PA7 (24..31) + PC0..PC3 (16..19)
-  #define IO1   24    // PA0
-  #define IO2   25    // PA1
-  #define IO3   26    // PA2
-  #define IO4   27    // PA3
-  #define IO5   28    // PA4
-  #define IO6   29    // PA5
-  #define IO7   30    // PA6
-  #define IO8   31    // PA7
-  #define IO9   16    // PC0
-  #define IO10  17    // PC1
-  #define IO11  18    // PC2
-  #define IO12  19    // PC3
+  #define IO1   31    // PA7
+  #define IO2   30    // PA6
+  #define IO3   29    // PA5
+  #define IO4   28    // PA4
+  #define IO5   27    // PA3
+  #define IO6   26    // PA2
+  #define IO7   25    // PA1
+  #define IO8   24    // PA0
+  #define IO9   0     // PB0
+  #define IO10  1     // PB1
+  #define IO11  2     // PB2
+  #define IO12  3     // PB3
 
-  #define LED   LED_BUILTIN     // PB7 = pin 7
+  #define LED   10    // PD2 
+  #define BUTTON      4       // PB4
+  // -- RS485 auf Hardware-UART:  RO -> Pin 8 (PD0/RX0),  DI -> Pin 9 (PD1/TX0) --
+  #define RS485_TXEN  12        // PD2  -> Transceiver DE (+ /RE zusammen)
+  #define HBW_RS485       (Serial)
+  #define HBW_DEBUGSTREAM (NULL)
+  #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
 
-  #ifdef USE_HARDWARE_SERIAL
-    // RS485 auf Hardware-UART (PD0/PD1), kein Debug.
-    #define RS485_TXEN  2       // PB2
-    #define BUTTON      3       // PB3
-    #define HBW_RS485       (Serial)
-    #define HBW_DEBUGSTREAM (NULL)
-    #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
-  #else
-    // RS485 per SoftwareSerial, Hardware-UART für Debug.
-    #define RS485_RXD   12      // PD4
-    #define RS485_TXD   13      // PD5
-    #define RS485_TXEN  14      // PD6
-    #define BUTTON      15      // PD7
-
-    #include <HBWSoftwareSerial.h>
-    HBWSoftwareSerial rs485(RS485_RXD, RS485_TXD);
-    #define HBW_RS485       (rs485)
-    #define HBW_DEBUGSTREAM (&Serial)
-    #define HBW_BEGIN_SERIALS() do { Serial.begin(115200); rs485.begin(19200); } while (0)
-  #endif
 
 // ============================================================================
 // ATmega644P(A) / ATmega1284P  (MightyCore -- zwei UARTs)
