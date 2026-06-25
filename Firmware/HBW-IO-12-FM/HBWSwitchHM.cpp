@@ -3,6 +3,30 @@
 #include <string.h>   // memcpy / memset
 
 
+// Workaround fuer NOT_A_PIN == 0 (Arduino): HBWSwitchAdvanced::afterReadConfig()
+// hat `if (pin == NOT_A_PIN) return;` -> ein OUTPUT-Kanal auf digitalem Pin 0
+// (z.B. PB0) wuerde sonst NIE als Ausgang initialisiert und schaltet nicht. Hier
+// holen wir die Init fuer Pin 0 nach (Basis-Logik repliziert); alle anderen Pins
+// erledigt die Basis ganz normal.
+void HBWSwitchHM::afterReadConfig()
+{
+  HBWSwitchAdvanced::afterReadConfig();   // macht alles AUSSER Pin 0
+  if (myPin != NOT_A_PIN)  return;        // != Pin 0 -> Basis war zustaendig
+
+  if (currentState == UNKNOWN_STATE) {
+    digitalWrite(myPin, config->n_inverted ? LOW : HIGH);   // Ausgang, Zustand "aus"
+    pinMode(myPin, OUTPUT);
+    currentState = JT_OFF;
+  }
+  else {  // bei Re-Read Zustand nicht zuruecksetzen, nur Ausgang nachfuehren
+    if (currentState == JT_ON || currentState == JT_OFFDELAY)
+      digitalWrite(myPin, LOW ^ config->n_inverted);
+    else if (currentState == JT_OFF || currentState == JT_ONDELAY)
+      digitalWrite(myPin, HIGH ^ config->n_inverted);
+  }
+}
+
+
 // Verzoegerung/Zeit fuer einen Zustand aus dem Peering holen -- 2-Byte HM-Zeit
 uint32_t HBWSwitchHM::getDelayForStateHM(uint8_t state, const s_peering_hm* p) const
 {

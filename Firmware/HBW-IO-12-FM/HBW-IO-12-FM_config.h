@@ -74,7 +74,7 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
 // ============================================================================
 #elif defined(__AVR_ATmega32__) || defined(__AVR_ATmega32A__)
 
-  // 12 IOs: PA0..PA7 (24..31) + PC0..PC3 (16..19)
+  // 12 IOs: PA7..PA0 (31..24) + PB0..PB3 (0..3)  -- an die Hardware angepasst
   #define IO1   31    // PA7
   #define IO2   30    // PA6
   #define IO3   29    // PA5
@@ -91,40 +91,43 @@ EEPROMClass* EepromPtr = &EEPROM;   // internes EEPROM
   #define LED   10    // PD2 
   #define BUTTON      4       // PB4
   // -- RS485 auf Hardware-UART:  RO -> Pin 8 (PD0/RX0),  DI -> Pin 9 (PD1/TX0) --
-  #define RS485_TXEN  12        // PD2  -> Transceiver DE (+ /RE zusammen)
+  #define RS485_TXEN  12        // PD4  -> Transceiver DE (+ /RE zusammen)
   #define HBW_RS485       (Serial)
   #define HBW_DEBUGSTREAM (NULL)
   #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
 
 
 // ============================================================================
-// ATmega644P(A) / ATmega1284P  (MightyCore -- zwei UARTs)
+// ATmega644P(A) / ATmega1284P  (MightyCore -- pinkompatibel zum 32A)
 // ============================================================================
 #elif defined(__AVR_ATmega644P__)  || defined(__AVR_ATmega644PA__) \
    || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega1284__)
 
-  // 12 IOs: PA0..PA7 (24..31) + PC0..PC3 (16..19)
-  #define IO1   24    // PA0
-  #define IO2   25    // PA1
-  #define IO3   26    // PA2
-  #define IO4   27    // PA3
-  #define IO5   28    // PA4
-  #define IO6   29    // PA5
-  #define IO7   30    // PA6
-  #define IO8   31    // PA7
-  #define IO9   16    // PC0
-  #define IO10  17    // PC1
-  #define IO11  18    // PC2
-  #define IO12  19    // PC3
+  // Pinkompatibel zum 32A (selbe Platine) -> identische Belegung.
+  // RS485 deshalb auch hier auf dem ERSTEN UART (Serial/PD0/PD1), NICHT Serial1:
+  // dessen RX1 ist PD2, und PD2 ist die LED. -> kein Geraete-Debug (UART = Bus,
+  // wie 32A). Vorteil 644P/1284P: groesseres EEPROM (Adresse weit ueber den
+  // Links, keine 30-Input-Link-Ueberlapp-Frage wie auf dem 1KB-32A).
+  // 12 IOs: PA7..PA0 (31..24) + PB0..PB3 (0..3)
+  #define IO1   31    // PA7
+  #define IO2   30    // PA6
+  #define IO3   29    // PA5
+  #define IO4   28    // PA4
+  #define IO5   27    // PA3
+  #define IO6   26    // PA2
+  #define IO7   25    // PA1
+  #define IO8   24    // PA0
+  #define IO9   0     // PB0
+  #define IO10  1     // PB1
+  #define IO11  2     // PB2
+  #define IO12  3     // PB3
 
-  #define LED   LED_BUILTIN     // PB7 = pin 7
-  #define BUTTON       3        // PB3
-
-  // RS485 fest auf zweitem UART (Serial1: PD2=RX1, PD3=TX1), Debug auf Serial.
-  #define RS485_TXEN   2        // PB2
-  #define HBW_RS485       (Serial1)
-  #define HBW_DEBUGSTREAM (&Serial)
-  #define HBW_BEGIN_SERIALS() do { Serial.begin(115200); Serial1.begin(19200, SERIAL_8E1); } while (0)
+  #define LED          10       // PD2
+  #define BUTTON       4        // PB4
+  #define RS485_TXEN   12       // PD4  -> Transceiver DE (+ /RE zusammen)
+  #define HBW_RS485       (Serial)        // RS485 auf UART0 (PD0/RX0, PD1/TX0), wie 32A
+  #define HBW_DEBUGSTREAM (NULL)
+  #define HBW_BEGIN_SERIALS() do { Serial.begin(19200, SERIAL_8E1); } while (0)
 
 #else
   #error "HBW-IO-12-FM: Nicht unterstuetzter Mikrocontroller. Erlaubt: ATmega328P, ATmega32(A), ATmega644P(A), ATmega1284P."

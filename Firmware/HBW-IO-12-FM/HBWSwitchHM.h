@@ -22,10 +22,11 @@
 class HBWSwitchHM : public HBWSwitchAdvanced {
   public:
     HBWSwitchHM(uint8_t _pin, hbw_config_switch* _config)
-      : HBWSwitchAdvanced(_pin, _config) {};
+      : HBWSwitchAdvanced(_pin, _config), myPin(_pin) {};
 
     virtual void set(HBWDevice* device, uint8_t length, uint8_t const * const data);
     virtual void loop(HBWDevice* device, uint8_t channel);
+    virtual void afterReadConfig();   // Workaround: Pin 0 == NOT_A_PIN (siehe .cpp)
 
     // Datenlaenge, mit der HBWLinkSwitchHM device->set() aufruft:
     // [0]=modeByte, [1..8]=4x uint16 Zeiten (LE), [9..10]=uint16 jt (LE),
@@ -46,6 +47,7 @@ class HBWSwitchHM : public HBWSwitchAdvanced {
       uint16_t jt;            // 4x 3-bit: jtOnDelay | jtOn | jtOffDelay | jtOff
     };
     s_peering_hm stateParamHM = {};   // gesichertes Peering fuer Timer-Schritte in loop()
+    uint8_t  myPin;                   // eigene Pin-Kopie (Basis-`pin` ist private)
 
     uint32_t getDelayForStateHM(uint8_t state, const s_peering_hm* p) const;
     uint8_t  getJumpTargetHM(uint8_t state, uint16_t jt) const;

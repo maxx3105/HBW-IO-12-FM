@@ -93,16 +93,44 @@ struct hbw_config {
 HBWChannel* channels[NUM_CHANNELS];
 
 
-// ---- BEHAVIOUR-Auto-Reset ----------------------------------------------------
-// Die BEHAVIOUR-Bits (INPUT/OUTPUT je Kanal) werden NUR beim Boot in die
-// Kanal-Objekte (HBWChanIn vs. HBWSwitchHM) umgesetzt. Aendert die CCU sie zur
-// Laufzeit, muss das Geraet neu booten, damit die Kanaele mit dem neuen Typ neu
-// entstehen. -> Boot-Wert merken, Aenderung in afterReadConfig() erkennen, in
-// loop() entprellt resetten (erst wenn die CCU-Config-Sequenz zur Ruhe kam).
-#define BEHAVIOUR_RESET_DELAY_MS 3000
-uint16_t g_bootBehaviour    = 0;
-bool     g_behaviourChanged = false;
-uint32_t g_lastCfgMillis    = 0;
+// ---- Pinout-Array (siehe HBW-IO-12-FM_config.h) -----------------------------
+static const uint8_t ioPin[NUM_CHANNELS] = {
+  IO1, IO2, IO3, IO4, IO5, IO6, IO7, IO8, IO9, IO10, IO11, IO12
+};
+
+
+// ---- BEHAVIOUR -> Kanal-Objekte (ohne Reboot) --------------------------------
+// BEHAVIOUR-Bit je Kanal: 1 = OUTPUT (HBWSwitchHM), 0 = INPUT (HBWChanIn).
+// Aendert die CCU die Bits, werden NUR die betroffenen Kanal-Objekte zur Laufzeit
+// getauscht -- KEIN Reboot. (Ein Reboot macht das Geraet kurz unerreichbar ->
+// "Geraetekommunikation gestoert" auf Kanal 0 nach JEDER Umstellung.) Aufruf aus
+// setup() (Erstanlage) und HBWIODevice::afterReadConfig() (Aenderung); HBWired
+// ruft direkt danach channels[i]->afterReadConfig() und initialisiert die neuen.
+// Hinweis: HBWChanIn/HBWSwitchHM haben keine dynamischen Member -> delete ueber
+// HBWChannel* ist hier unbedenklich (free() nutzt die Allokationsgroesse).
+uint16_t g_currentBehaviour = 0xFFFF;   // 0xFFFF = noch nichts instanziiert
+
+void applyBehaviour(uint16_t beh) {
+  for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
+    bool wantOut = ((beh >> i) & 0x01) != 0;
+    if (channels[i] != NULL) {
+      bool haveOut = ((g_currentBehaviour >> i) & 0x01) != 0;
+      if (wantOut == haveOut) continue;     // Kanal hat schon den richtigen Typ
+      delete channels[i];
+    }
+    if (wantOut) channels[i] = new HBWSwitchHM(ioPin[i], &(hbwconfig.outCfg[i]));
+    else         channels[i] = new HBWChanIn (ioPin[i], &(hbwconfig.inCfg[i]));
+  }
+  g_currentBehaviour = beh;
+}
+
+
+// ---- LinkSender-Pointer (fuer CCU-KEY-Sim) ----------------------------------
+// Wir merken uns den Tasten-LinkSender, damit ein KEY-Sim der CCU ("Tastendruck
+// simulieren"/Anlerntest) wie ein ECHTER lokaler Tastendruck die eigene
+// Peering-Tabelle abarbeiten kann (siehe HBWIODevice::receiveKeyEvent unten).
+typedef HBWLinkKey<NUM_LINKS_IN, LINKADDRESSSTART_IN> HBWLinkKeyType;
+HBWLinkKeyType* g_linkKey = NULL;
 
 
 // ---- Device-Subklasse mit afterReadConfig() ---------------------------------
@@ -120,53 +148,89 @@ class HBWIODevice : public HBWDevice {
                   _debugstream, _ls, _lr) { };
 
     virtual void afterReadConfig() {
-      // gerätespezifische Defaults nach EEPROM-Read
-      // XML-Default LOGGING_TIME = 2.0 s (factor 10 -> Geräte-Wert 20)
-      if (hbwconfig.logging_time == 0xFF) hbwconfig.logging_time = 20;
+      // gerätespezifische Defaults nach EEPROM-Read.
+      // XML-Default LOGGING_TIME = 2.0 s (factor 10 -> Geräte-Wert 20).
+      // WICHTIG: nicht nur im RAM defaulten! Nach einem Werksreset (factoryReset
+      // loescht das Config-EEPROM auf 0xFF und ruft readConfig->afterReadConfig)
+      // steht 0x01 = 0xFF, was die CCU als 25.5 s (= 0xFF/10) liest und anzeigt.
+      // Daher den Default PERSISTENT ins EEPROM schreiben -- update() schreibt nur,
+      // wenn nicht ohnehin 20, also genau einmal nach dem Reset. logging_time liegt
+      // an EEPROM-Adresse 0x01 (HBWDevice::readConfig: readEEPROM(config, 0x01, ..)).
+      if (hbwconfig.logging_time == 0xFF) {
+        hbwconfig.logging_time = 20;
+        EepromPtr->update(0x01, 20);
+      }
 
-      // Wird nach JEDEM Config-(Re-)Read aufgerufen. BEHAVIOUR-Aenderung der CCU
-      // erkennen; 0xFFFF (frisch) zaehlt wie 0x0000 -- identisch zur setup()-Logik.
-      uint16_t cur = (hbwconfig.behaviour == 0xFFFF) ? 0x0000 : hbwconfig.behaviour;
-      g_behaviourChanged = (cur != g_bootBehaviour);
-      g_lastCfgMillis = millis();   // Entprell-Zeitstempel (Reset erst nach Ruhe, siehe loop())
+      // BEHAVIOUR-Aenderung der CCU SOFORT umsetzen (Kanaltyp tauschen, kein
+      // Reboot). behaviour==0xFFFF ist die GUELTIGE Konfig "alle 12 OUTPUT" und darf
+      // NICHT als "frisch" verworfen werden -- frisch nur, wenn die CCU die
+      // central_address noch nicht gesetzt hat (gleiche Logik wie in setup()).
+      uint16_t beh;
+      if (hbwconfig.central_address == 0xFFFFFFFF) {
+        // ungepairt/nach Werksreset: XML-Default alle INPUT -- und zwar auch
+        // PERSISTENT ins EEPROM (0x07/0x08), sonst liest die CCU das geloeschte
+        // 0xFF/0xFF und zeigt alle 12 Kanaele faelschlich als OUTPUT (XML: Bit 1 =
+        // OUTPUT). update() schreibt nur einmal; sobald die CCU konfiguriert hat
+        // (central != 0xFFFFFFFF), wird BEHAVIOUR hier NIE angefasst.
+        beh = 0x0000;
+        EepromPtr->update(0x07, 0x00);   // Kanaele 1-8  -> INPUT
+        EepromPtr->update(0x08, 0xF0);   // Kanaele 9-12 -> INPUT (oberes Nibble = ungenutzt, wie CCU)
+        hbwconfig.behaviour = 0xF000;    // RAM mitziehen
+      }
+      else {
+        beh = hbwconfig.behaviour;       // CCU-Konfig (0xFFFF hier = gueltig "alle OUTPUT")
+      }
+      applyBehaviour(beh);
+    };
+
+    // KEY-Event-Empfang. Ein echtes Sensor-Ereignis eines ANDEREN Geraets traegt
+    // dessen Adresse als Absender -> ganz normal an den LinkReceiver weiterreichen.
+    // Ein KEY-Sim der CCU ("Tastendruck simulieren"/Anlerntest) traegt dagegen die
+    // ZENTRALEN-Adresse als Absender; interne Direktverknuepfungen speichern aber
+    // die EIGENE Geraeteadresse als Sensor -> der Sim wuerde nie matchen. Damit der
+    // CCU-Testknopf genauso wirkt wie ein physischer Tastendruck, jagen wir den Sim
+    // durch den eigenen LinkSender: der liest die eigene Peering-Tabelle (Eingangs-
+    // Links) und loest interne Verknuepfungen LOKAL sowie externe ADRESSIERT aus --
+    // exakt wie HBWChanIn::loop() -> device->sendKeyEvent() beim echten Taster.
+    // (Kein Broadcast noetig - die CCU hat den Sim ja selbst ausgeloest.)
+    // Keine Endlos-Rekursion: der LinkSender ruft fuer interne Links wieder
+    // receiveKeyEvent() auf, dann aber mit der EIGENEN Adresse (!= Zentrale) -> else.
+    virtual void receiveKeyEvent(uint32_t senderAddress, uint8_t srcChan,
+                                 uint8_t dstChan, uint8_t keyPressNum, boolean longPress) {
+      if (g_linkKey != NULL && senderAddress == getCentralAddress()) {
+        g_linkKey->sendKeyEvent(this, srcChan, keyPressNum, longPress);
+        return;
+      }
+      HBWDevice::receiveKeyEvent(senderAddress, srcChan, dstChan, keyPressNum, longPress);
     };
 };
 
 HBWIODevice* device = NULL;
 
 
-// ---- Pinout-Array (siehe HBW-IO-12-FM_config.h) -----------------------------
-static const uint8_t ioPin[NUM_CHANNELS] = {
-  IO1, IO2, IO3, IO4, IO5, IO6, IO7, IO8, IO9, IO10, IO11, IO12
-};
-
-
 void setup()
 {
-  // BEHAVIOUR-Bits direkt aus dem internen EEPROM lesen, BEVOR die Channels
-  // erzeugt werden. Frisch geflashte Geräte (alle 0xFF) als "alle INPUT"
-  // interpretieren -- entspricht dem XML-Default (option default="true" id="INPUT").
+  // BEHAVIOUR-Bits aus dem internen EEPROM lesen (0x07/0x08, je 1 Bit/Kanal,
+  // 1 = OUTPUT, 0 = INPUT) und die Kanal-Objekte passend anlegen.
+  // WICHTIG: "frisch" NICHT an behaviour==0xFFFF erkennen -- das ist zugleich die
+  // GUELTIGE Konfiguration "alle 12 Kanaele OUTPUT"! Ob die CCU ueberhaupt schon
+  // konfiguriert hat, verraet die central_address (0x02..0x05): erst die CCU setzt
+  // sie (ungepairt = 0xFFFFFFFF). So kollidiert "frisch" nicht mehr mit All-Output.
   uint16_t behaviour = (uint16_t)EEPROM.read(7) | ((uint16_t)EEPROM.read(8) << 8);
-  if (behaviour == 0xFFFF) behaviour = 0x0000;
-  g_bootBehaviour = behaviour;   // Referenz fuer den BEHAVIOUR-Auto-Reset
-
-  for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-    bool isOutput = ((behaviour >> i) & 0x01) != 0;
-    if (isOutput) {
-      channels[i] = new HBWSwitchHM(ioPin[i], &(hbwconfig.outCfg[i]));
-    } else {
-      channels[i] = new HBWChanIn(ioPin[i], &(hbwconfig.inCfg[i]));
-    }
-  }
+  uint32_t central   = (uint32_t)EEPROM.read(2)        |  ((uint32_t)EEPROM.read(3) << 8)
+                     | ((uint32_t)EEPROM.read(4) << 16) |  ((uint32_t)EEPROM.read(5) << 24);
+  if (central == 0xFFFFFFFF) behaviour = 0x0000;   // ungepairt -> XML-Default: alle INPUT
+  applyBehaviour(behaviour);
 
   HBW_BEGIN_SERIALS();   // baud-init je MCU/Konfig (siehe Config-Header)
 
+  g_linkKey = new HBWLinkKeyType();   // Pointer gemerkt (CCU-KEY-Sim, s. receiveKeyEvent)
   device = new HBWIODevice(HMW_DEVICETYPE, HARDWARE_VERSION, FIRMWARE_VERSION,
                            &HBW_RS485, RS485_TXEN,
                            sizeof(hbwconfig), &hbwconfig,
                            NUM_CHANNELS, channels,
                            HBW_DEBUGSTREAM,
-                           new HBWLinkKey<NUM_LINKS_IN, LINKADDRESSSTART_IN>(),
+                           g_linkKey,
                            new HBWLinkSwitchHM<NUM_LINKS_OUT, LINKADDRESSSTART_OUT>());
 
   device->setConfigPins(BUTTON, LED);
@@ -184,15 +248,5 @@ void setup()
 void loop()
 {
   device->loop();
-
-  // Auto-Reset nach BEHAVIOUR-Aenderung (INPUT<->OUTPUT). Entprellt: erst wenn
-  // seit dem letzten Config-Write Ruhe ist, damit eine mehrteilige CCU-Sequenz
-  // nicht mittendrin abgebrochen wird. Reset = HBWireds Watchdog (Support_WDT,
-  // 1 s) nicht mehr fuettern -> sauberer Hardware-Reset, Kanaele entstehen neu.
-  if (g_behaviourChanged && (uint32_t)(millis() - g_lastCfgMillis) > BEHAVIOUR_RESET_DELAY_MS) {
-    hbwdebug(F("BEHAVIOUR geaendert -> Reset\n"));
-    while (1) { }   // Watchdog loest in <=1 s den Reset aus (kein eigenes WDT-Re-Enable -> kein Boot-Loop)
-  }
-
   POWERSAVE();
 }
